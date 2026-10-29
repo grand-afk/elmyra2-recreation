@@ -1,5 +1,7 @@
 // The instrument panel, drawn as one SVG so it scales cleanly on any screen.
-// Layout follows the hardware's sections; exact positions to be refined against a photo.
+// Positions are taken from a front-panel photo of the desktop unit: the viewBox uses the
+// photo's own pixel coordinates (panel area x 140..1780, y 62..1062), so a control can be
+// checked against the photo by its numbers alone.
 import { useEffect, useRef, useState, type PointerEvent as RPE } from 'react';
 import { engine } from '../engine/client';
 import { MODP_PROGRAMS, paramDef, type TapId } from '../engine/params';
@@ -7,14 +9,17 @@ import * as A from './actions';
 import { useParam } from './hooks';
 import { useUi } from './uiState';
 
-const INK = '#e9e2cf';
-const QUIET = '#8d877a';
-const LINE = '#3b3833';
+const GOLD = '#d9bf86';
+const TRACE = '#a88a4f';
+const WHITE = '#f2f0ea';
 const ACCENT = '#ff8a2a';
 const PAGE_COLORS = ['#ff4d4d', '#4dd17a', '#4d8dff', '#ffd84d'];
 
+/** Horizontal offset of each voice from voice 1 (from the jack row in the photo). */
+const VOICE_DX = [0, 283, 563, 846];
+
 // ---------------------------------------------------------------- Knob
-function Knob({ id, x, y, r = 24, label }: { id: string; x: number; y: number; r?: number; label: string }) {
+function Knob({ id, x, y, size = 'small' }: { id: string; x: number; y: number; size?: 'small' | 'big' }) {
   const value = useParam(id);
   const def = paramDef(id);
   const active = def.milestone <= 1;
@@ -22,6 +27,7 @@ function Knob({ id, x, y, r = 24, label }: { id: string; x: number; y: number; r
   const drag = useRef<{ y: number; v: number; pid: number } | null>(null);
   const lastTap = useRef(0);
   const [dragging, setDragging] = useState(false);
+  const r = size === 'big' ? 46 : 19;
 
   const onDown = (e: RPE<SVGGElement>) => {
     A.selectControl(id);
@@ -40,7 +46,7 @@ function Knob({ id, x, y, r = 24, label }: { id: string; x: number; y: number; r
   const onMove = (e: RPE<SVGGElement>) => {
     const d = drag.current;
     if (!d || d.pid !== e.pointerId) return;
-    const range = e.altKey ? 1200 : 240; // px for full travel
+    const range = e.altKey ? 1200 : 240; // screen px for full travel
     engine.store.set(id, d.v + (d.y - e.clientY) / range);
   };
   const onUp = () => {
@@ -48,14 +54,10 @@ function Knob({ id, x, y, r = 24, label }: { id: string; x: number; y: number; r
     setDragging(false);
   };
 
-  const ang = -135 + value * 270;
-  const rad = (ang - 90) * (Math.PI / 180);
-  const arc = (a0: number, a1: number, rr: number) => {
-    const p = (a: number) => [x + rr * Math.cos(((a - 90) * Math.PI) / 180), y + rr * Math.sin(((a - 90) * Math.PI) / 180)];
-    const [x0, y0] = p(a0);
-    const [x1, y1] = p(a1);
-    return `M${x0} ${y0} A${rr} ${rr} 0 ${a1 - a0 > 180 ? 1 : 0} 1 ${x1} ${y1}`;
-  };
+  const ang = ((-135 + value * 270 - 90) * Math.PI) / 180;
+  const p = (f: number) => [x + Math.cos(ang) * r * f, y + Math.sin(ang) * r * f];
+  const [x0, y0] = p(size === 'big' ? 0.3 : 0.15);
+  const [x1, y1] = p(0.92);
   return (
     <g
       className={`knob${active ? '' : ' inactive'}`}
@@ -69,21 +71,18 @@ function Knob({ id, x, y, r = 24, label }: { id: string; x: number; y: number; r
       aria-valuemin={0}
       aria-valuemax={100}
     >
-      <circle cx={x} cy={y} r={r + 14} fill="transparent" />
-      <path d={arc(-135, 135, r + 6)} stroke={LINE} strokeWidth={3} fill="none" strokeLinecap="round" />
-      {active && value > 0.002 && <path d={arc(-135, ang, r + 6)} stroke={ACCENT} strokeWidth={3} fill="none" strokeLinecap="round" />}
-      <circle cx={x} cy={y} r={r} fill="url(#knobFace)" stroke={selected ? ACCENT : '#000'} strokeWidth={selected ? 2.5 : 1} />
-      <line x1={x + Math.cos(rad) * r * 0.25} y1={y + Math.sin(rad) * r * 0.25} x2={x + Math.cos(rad) * r * 0.85} y2={y + Math.sin(rad) * r * 0.85} stroke={INK} strokeWidth={3} strokeLinecap="round" />
-      <text x={x} y={y + r + 24} textAnchor="middle" className="lbl">
-        {label}
-      </text>
+      <circle cx={x} cy={y} r={r + 16} fill="transparent" />
+      {size === 'small' && <circle cx={x} cy={y} r={r + 7} fill="none" stroke={TRACE} strokeWidth={3} />}
+      {size === 'big' && <circle cx={x + 4} cy={y + 6} r={r + 2} fill="#000" opacity={0.6} />}
+      <circle cx={x} cy={y} r={r} fill={size === 'big' ? 'url(#bigKnob)' : '#0b0b0b'} stroke={selected ? ACCENT : '#2a2a2a'} strokeWidth={selected ? 4 : 1.5} />
+      <line x1={x0} y1={y0} x2={x1} y2={y1} stroke={WHITE} strokeWidth={size === 'big' ? 9 : 4.5} strokeLinecap="round" />
       {!active && (
-        <text x={x + r} y={y - r} className="mtag">
+        <text x={x + r + 4} y={y - r + 4} className="mtag">
           M{def.milestone}
         </text>
       )}
       {dragging && (
-        <text x={x} y={y - r - 12} textAnchor="middle" className="val">
+        <text x={x} y={y - r - 14} textAnchor="middle" className="val">
           {Math.round(value * 100)}
         </text>
       )}
@@ -92,15 +91,35 @@ function Knob({ id, x, y, r = 24, label }: { id: string; x: number; y: number; r
 }
 
 // ---------------------------------------------------------------- Jack (decorative until patching, M3)
-function Jack({ x, y, label }: { x: number; y: number; label: string }) {
+function Jack({ x, y }: { x: number; y: number }) {
   return (
-    <g className="jack inactive">
-      <circle cx={x} cy={y} r={9} fill="#0b0b0b" stroke="#8c8c8c" strokeWidth={2.5} />
-      <circle cx={x} cy={y} r={4} fill="#000" />
-      <text x={x} y={y + 22} textAnchor="middle" className="lbl small">
-        {label}
+    <g pointerEvents="none">
+      <circle cx={x} cy={y} r={25} fill="url(#jackNut)" stroke="#555" strokeWidth={1} />
+      <circle cx={x} cy={y} r={15} fill="#9a9a96" />
+      <circle cx={x} cy={y} r={11} fill="#050505" />
+    </g>
+  );
+}
+
+/** White boxed label, as printed above jacks and knobs. */
+function Label({ x, y, text }: { x: number; y: number; text: string }) {
+  const w = text.length * 12 + 12;
+  return (
+    <g pointerEvents="none">
+      <rect x={x - w / 2} y={y - 12} width={w} height={22} rx={2} fill="#0d0d0d" stroke={WHITE} strokeWidth={1.4} />
+      <text x={x} y={y + 5} textAnchor="middle" className="plbl">
+        {text}
       </text>
     </g>
+  );
+}
+
+/** Big gold section word. */
+function Title({ x, y, text, size = 56, rotate = 0 }: { x: number; y: number; text: string; size?: number; rotate?: number }) {
+  return (
+    <text x={x} y={y} className="ptitle" fontSize={size} transform={rotate ? `rotate(${rotate} ${x} ${y})` : undefined} pointerEvents="none">
+      {text}
+    </text>
   );
 }
 
@@ -120,21 +139,23 @@ function TapPoint({ id, x, y, voice }: { id: TapId; x: number; y: number; voice?
         A.pickTap(id);
       }}
     >
-      <circle cx={x} cy={y} r={16} fill="transparent" />
-      <circle cx={x} cy={y} r={7} className="tapdot" />
-      <text x={x + 12} y={y - 10} className="taplbl">
+      <circle cx={x} cy={y} r={22} fill="transparent" />
+      <circle cx={x} cy={y} r={9} className="tapdot" />
+      <text x={x + 14} y={y - 12} className="taplbl">
         {id}
       </text>
     </g>
   );
 }
 
-// ---------------------------------------------------------------- Panel button with LED
-function PanelButton({ x, y, label, led, onPress, onLong, active = true, milestone }: {
+// ---------------------------------------------------------------- Panel button with LED window
+function PanelButton({ x, y, label, led, ledAt, red, onPress, onLong, active = true, milestone }: {
   x: number;
   y: number;
   label: string;
   led?: string | null;
+  ledAt: [number, number];
+  red?: boolean;
   onPress: () => void;
   onLong?: () => void;
   active?: boolean;
@@ -156,234 +177,326 @@ function PanelButton({ x, y, label, led, onPress, onLong, active = true, milesto
     if (!longFired.current) onPress();
   };
   return (
-    <g className={`btn${active ? '' : ' inactive'}`} onPointerDown={down} onPointerUp={up} onPointerCancel={() => timer.current && clearTimeout(timer.current)}>
-      <circle cx={x} cy={y} r={24} fill="transparent" />
-      <circle cx={x} cy={y} r={15} fill="url(#btnFace)" stroke="#000" />
-      <circle cx={x - 24} cy={y - 18} r={4.5} fill={led ?? '#2a2622'} className={led ? 'led on' : 'led'} style={led ? { color: led } : undefined} />
-      <text x={x} y={y + 34} textAnchor="middle" className="lbl">
-        {label}
-      </text>
-      {!active && milestone && (
-        <text x={x + 16} y={y - 16} className="mtag">
-          M{milestone}
-        </text>
-      )}
+    <g>
+      <rect x={ledAt[0] - 10} y={ledAt[1] - 10} width={20} height={20} fill={led ?? '#2b2a22'} className={led ? 'led on' : 'led'} style={led ? { color: led } : undefined} pointerEvents="none" />
+      <g className={`btn${active ? '' : ' inactive'}`} onPointerDown={down} onPointerUp={up} onPointerCancel={() => timer.current && clearTimeout(timer.current)}>
+        <circle cx={x} cy={y} r={30} fill="transparent" />
+        <circle cx={x} cy={y} r={22} fill={red ? 'url(#redBtn)' : '#0b0b0b'} stroke={red ? '#7a1010' : '#3a3a3a'} strokeWidth={2} />
+        {!active && milestone && (
+          <text x={x + 22} y={y - 18} className="mtag">
+            M{milestone}
+          </text>
+        )}
+      </g>
+      <Label x={x - 32} y={y + 45} text={label} />
     </g>
   );
 }
 
-// ---------------------------------------------------------------- Touchpad
-function Pad({ v, x, y, w, h }: { v: number; x: number; y: number; w: number; h: number }) {
+// ---------------------------------------------------------------- Touch plates
+/**
+ * Two brushed-metal discs bridged by a translucent strip. The voice's LED sits behind the
+ * PCB under the strip, its brightness following the envelope (= volume), as on the hardware.
+ */
+function TouchPlates({ v, a, b }: { v: number; a: [number, number]; b: [number, number] }) {
   const drone = useParam(`v${v}.drone`) > 0.5;
   const pointers = useRef(new Set<number>());
   const glow = useRef<SVGGElement>(null);
 
-  // LED brightness = the voice's real envelope level from the audio thread, as on the hardware.
   useEffect(() => {
     let raf = 0;
     const tick = () => {
-      const lvl = engine.envLevels[v - 1];
-      if (glow.current) glow.current.style.opacity = String(Math.min(1, lvl * 1.15));
+      if (glow.current) glow.current.style.opacity = String(Math.min(1, engine.envLevels[v - 1] * 1.15));
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [v]);
-  const pressureOf = (e: RPE<SVGRectElement>) => {
+
+  const pressureOf = (e: RPE<SVGElement>) => {
     if (e.pointerType === 'pen' && e.pressure > 0) return Math.min(1, 0.15 + e.pressure);
     if (e.pointerType === 'touch' && e.width > 1) return Math.min(1, Math.max(0.45, (e.width - 8) / 40));
     return 1;
   };
-  const down = (e: RPE<SVGRectElement>) => {
+  const down = (e: RPE<SVGElement>) => {
     e.currentTarget.setPointerCapture(e.pointerId);
     pointers.current.add(e.pointerId);
     A.selectVoice(v);
     A.gate(v, pressureOf(e));
   };
-  const move = (e: RPE<SVGRectElement>) => {
+  const move = (e: RPE<SVGElement>) => {
     if (pointers.current.has(e.pointerId)) A.gate(v, pressureOf(e));
   };
-  const up = (e: RPE<SVGRectElement>) => {
+  const up = (e: RPE<SVGElement>) => {
     pointers.current.delete(e.pointerId);
     if (pointers.current.size === 0) A.gate(v, 0);
   };
-  // A pair of conductive plates with a slot between them; the LED behind the PCB shines
-  // through the slot. Touching either plate (or bridging both) plays the voice.
-  const gap = 16;
-  const pw = (w - gap) / 2;
-  const cx = x + w / 2;
   const handlers = { onPointerDown: down, onPointerMove: move, onPointerUp: up, onPointerCancel: up };
+  const strip = `M${a[0]} ${a[1]}L${b[0]} ${b[1]}`;
+  const R = 46;
   return (
     <g className="pad">
-      {/* hit area spans both plates and the slot */}
-      <rect x={x} y={y} width={w} height={h} fill="transparent" {...handlers} />
       <g pointerEvents="none">
-        <rect x={cx - gap / 2} y={y + 6} width={gap} height={h - 12} rx={3} fill="#0a0908" />
+        <path d={strip} stroke="#2b3020" strokeWidth={70} strokeLinecap="round" />
+        <path d={strip} stroke="#3a4229" strokeWidth={58} strokeLinecap="round" opacity={0.7} />
         <g ref={glow} style={{ opacity: 0 }}>
-          <rect x={cx - gap / 2 + 3} y={y + 10} width={gap - 6} height={h - 20} rx={3} fill={ACCENT} filter="url(#ledBlur)" />
-          <rect x={cx - 2} y={y + 18} width={4} height={h - 36} rx={2} fill="#ffd9b0" />
+          <path d={strip} stroke="#ffd98a" strokeWidth={62} strokeLinecap="round" filter="url(#ledBlur)" />
+          <path d={strip} stroke="#fff4d6" strokeWidth={26} strokeLinecap="round" opacity={0.8} filter="url(#ledBlur)" />
         </g>
-        <rect x={x} y={y} width={pw} height={h} rx={10} fill="url(#plate)" stroke="#000" strokeWidth={1.5} />
-        <rect x={cx + gap / 2} y={y} width={pw} height={h} rx={10} fill="url(#plate)" stroke="#000" strokeWidth={1.5} />
+        {[a, b].map(([x, y], i) => (
+          <g key={i}>
+            <circle cx={x + 3} cy={y + 5} r={R + 1} fill="#000" opacity={0.55} />
+            <circle cx={x} cy={y} r={R} fill="url(#disc)" stroke="#8d8d88" strokeWidth={1.5} />
+          </g>
+        ))}
         {drone && (
-          <text x={x + 10} y={y + 20} className="lbl small" fill="#3a2a0c">
+          <text x={(a[0] + b[0]) / 2} y={Math.min(a[1], b[1]) - 56} textAnchor="middle" className="plbl" fill={GOLD}>
             DRONE
           </text>
         )}
       </g>
+      {/* hit area: both discs and the bridge */}
+      <path d={strip} stroke="transparent" strokeWidth={96} strokeLinecap="round" {...handlers} />
     </g>
   );
 }
 
-// ---------------------------------------------------------------- Voice strip
-function VoiceStrip({ v, x0 }: { v: number; x0: number }) {
+// ---------------------------------------------------------------- Voice
+function Voice({ v }: { v: number }) {
+  const dx = VOICE_DX[v - 1];
   const page = useParam(`v${v}.page`);
   const modp = useParam(`v${v}.modp`);
   const selected = useUi((s) => s.voice === v);
   const b = `v${v}.`;
+  const X = (x: number) => x + dx;
+  // Voices 1-2 have the lower disc on the left; voices 3-4 are mirrored, as on the panel.
+  const plates: [[number, number], [number, number]] = v <= 2 ? [[X(390), 960], [X(495), 908]] : [[X(392), 905], [X(492), 955]];
   return (
     <g>
-      <rect x={x0 + 6} y={276} width={243} height={428} rx={10} fill="none" stroke={selected ? '#6b5235' : LINE} strokeWidth={selected ? 2 : 1} />
-      <text x={x0 + 22} y={300} className="sect" onPointerDown={() => A.selectVoice(v)}>
-        VOICE {v}
-      </text>
-      <circle cx={x0 + 228} cy={295} r={4} fill={MODP_PROGRAMS[modp]?.color ?? '#333'} className="led on" style={{ color: MODP_PROGRAMS[modp]?.color }} />
-      <Knob id={b + 'tune'} x={x0 + 66} y={350} label="TUNE" />
-      <Knob id={b + 'mod'} x={x0 + 189} y={350} label="MOD" />
-      <Knob id={b + 'wave'} x={x0 + 66} y={442} label="WAVE" />
-      <Knob id={b + 'env'} x={x0 + 189} y={442} label="ENV" />
-      <PanelButton x={x0 + 128} y={398} label="PG" led={PAGE_COLORS[page]} onPress={() => A.cyclePage(v)} onLong={() => A.toggleDrone(v)} />
-      {['TUNE', 'GATE', 'ENV', 'MOD'].map((l, i) => (
-        <Jack key={l} x={x0 + 46 + i * 54} y={505} label={l} />
+      {/* gold traces; the bar count marks the voice number */}
+      <g stroke={selected ? GOLD : TRACE} strokeWidth={selected ? 4 : 3} fill="none" pointerEvents="none">
+        <path d={`M${X(312)} 448H${X(572)}`} />
+        <path d={`M${X(445)} 448V812`} />
+        <path d={`M${X(395)} 700H${X(495)}`} />
+        <path d={`M${X(395)} 812H${X(500)}`} />
+        <path d={`M${X(400)} 557H${X(445)}`} />
+      </g>
+      {Array.from({ length: v }, (_, i) => (
+        <rect key={i} x={X(455) + i * 11} y={560} width={6} height={128} fill={selected ? GOLD : TRACE} pointerEvents="none" />
       ))}
-      <Pad v={v} x={x0 + 20} y={548} w={215} h={142} />
-      <TapPoint id="T1" x={x0 + 232} y={322} voice={v} />
+      {['GATE', 'MOD', 'WAV', 'ENV'].map((l, i) => (
+        <g key={l}>
+          <Label x={X(337) + i * 70} y={375} text={l} />
+          <Jack x={X(337) + i * 70} y={430} />
+        </g>
+      ))}
+      <Label x={X(375)} y={493} text="TUNE" />
+      <Jack x={X(372)} y={557} />
+      <Knob id={b + 'tune'} x={X(515)} y={550} size="big" />
+      <Label x={X(375)} y={643} text="MOD" />
+      <Knob id={b + 'mod'} x={X(370)} y={700} />
+      <Label x={X(518)} y={643} text="WAV" />
+      <Knob id={b + 'wave'} x={X(515)} y={700} />
+      <Label x={X(375)} y={757} text="ENV" />
+      <Knob id={b + 'env'} x={X(368)} y={812} />
+      <g className="btn" onPointerDown={() => A.selectVoice(v)}>
+        <PgButton v={v} x={X(518)} y={812} color={PAGE_COLORS[page]} />
+      </g>
+      <Label x={X(556)} y={842} text="PG" />
+      <circle cx={X(560)} cy={493} r={5} fill={MODP_PROGRAMS[modp]?.color ?? '#333'} className="led on" style={{ color: MODP_PROGRAMS[modp]?.color }} pointerEvents="none" />
+      <TouchPlates v={v} a={plates[0]} b={plates[1]} />
+      <TapPoint id="T1" x={X(440)} y={493} voice={v} />
     </g>
   );
 }
 
-function Section({ x, y, w, h, title }: { x: number; y: number; w: number; h: number; title: string }) {
+/** PG: tap = next wavetable page, hold 1 s = drone. Ring colour shows the page. */
+function PgButton({ v, x, y, color }: { v: number; x: number; y: number; color: string }) {
+  const timer = useRef<number | null>(null);
+  const longFired = useRef(false);
   return (
-    <g pointerEvents="none">
-      <rect x={x} y={y} width={w} height={h} rx={10} fill="none" stroke={LINE} />
-      <text x={x + 12} y={y + 22} className="sect">
-        {title}
-      </text>
+    <g
+      onPointerDown={() => {
+        longFired.current = false;
+        timer.current = window.setTimeout(() => {
+          longFired.current = true;
+          A.toggleDrone(v);
+        }, 1000);
+      }}
+      onPointerUp={() => {
+        if (timer.current) clearTimeout(timer.current);
+        if (!longFired.current) A.cyclePage(v);
+      }}
+      onPointerCancel={() => timer.current && clearTimeout(timer.current)}
+    >
+      <circle cx={x} cy={y} r={28} fill="transparent" />
+      <circle cx={x} cy={y} r={22} fill="none" stroke={color} strokeWidth={3} className="led on" style={{ color }} />
+      <circle cx={x} cy={y} r={18} fill="#0b0b0b" stroke="#3a3a3a" strokeWidth={1.5} />
     </g>
   );
 }
 
 export function Panel() {
   const modp1 = useParam('v1.modp');
-  const allSame = [2, 3, 4].every((v) => engine.store.get(`v${v}.modp`) === modp1);
-  useParam('v2.modp');
-  useParam('v3.modp');
-  useParam('v4.modp');
+  const m2 = useParam('v2.modp');
+  const m3 = useParam('v3.modp');
+  const m4 = useParam('v4.modp');
+  const allSame = m2 === modp1 && m3 === modp1 && m4 === modp1;
   return (
-    <svg className="panel" viewBox="0 0 1200 720" role="application" aria-label="Elmyra 2 Recreation panel">
+    <svg className="panel" viewBox="130 52 1660 1020" role="application" aria-label="Elmyra 2 Recreation panel">
       <defs>
-        <radialGradient id="knobFace" cx="40%" cy="35%" r="70%">
-          <stop offset="0%" stopColor="#4a4744" />
-          <stop offset="100%" stopColor="#1c1b1a" />
+        <radialGradient id="bigKnob" cx="45%" cy="40%" r="65%">
+          <stop offset="0%" stopColor="#2a2a2a" />
+          <stop offset="70%" stopColor="#111" />
+          <stop offset="100%" stopColor="#050505" />
         </radialGradient>
-        <radialGradient id="btnFace" cx="40%" cy="35%" r="70%">
-          <stop offset="0%" stopColor="#d9d3c4" />
-          <stop offset="100%" stopColor="#8c8679" />
+        <radialGradient id="jackNut" cx="40%" cy="35%" r="70%">
+          <stop offset="0%" stopColor="#f4f4f0" />
+          <stop offset="60%" stopColor="#b9b9b4" />
+          <stop offset="100%" stopColor="#6d6d69" />
         </radialGradient>
-        <linearGradient id="plate" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#e6c77a" />
-          <stop offset="50%" stopColor="#c19a45" />
-          <stop offset="100%" stopColor="#8f6d28" />
-        </linearGradient>
-        <filter id="ledBlur" x="-200%" y="-20%" width="500%" height="140%">
-          <feGaussianBlur stdDeviation="5" />
+        <radialGradient id="disc" cx="40%" cy="35%" r="75%">
+          <stop offset="0%" stopColor="#f1f1ec" />
+          <stop offset="55%" stopColor="#cfcfc9" />
+          <stop offset="100%" stopColor="#9d9d97" />
+        </radialGradient>
+        <radialGradient id="redBtn" cx="40%" cy="35%" r="70%">
+          <stop offset="0%" stopColor="#ff5a4a" />
+          <stop offset="100%" stopColor="#a3140f" />
+        </radialGradient>
+        <filter id="ledBlur" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="9" />
         </filter>
       </defs>
-      <rect x={0} y={0} width={1200} height={720} rx={18} fill="#171615" />
-      {/* screws */}
+      <rect x={140} y={62} width={1640} height={1000} rx={10} fill="#0e0e0e" />
       {[
-        [18, 18],
-        [1182, 18],
-        [18, 702],
-        [1182, 702],
+        [200, 76],
+        [1716, 76],
+        [200, 1026],
+        [1716, 1026],
       ].map(([x, y]) => (
-        <circle key={`${x}-${y}`} cx={x} cy={y} r={5} fill="#2b2926" stroke="#000" />
-      ))}
-
-      {/* Brand */}
-      <text x={36} y={58} className="logo">
-        Elmyra 2
-      </text>
-      <text x={38} y={80} className="logo2">
-        RECREATION
-      </text>
-
-      {/* Master */}
-      <Section x={26} y={100} w={112} h={160} title="MASTER" />
-      <Knob id="master" x={82} y={170} label="VOL" />
-      <TapPoint id="T6" x={124} y={118} />
-
-      {/* LFOs */}
-      <Section x={150} y={34} w={228} h={226} title="LFO" />
-      <Knob id="lfo1.freq" x={198} y={110} r={20} label="LFO1" />
-      <Knob id="lfo2.freq" x={264} y={110} r={20} label="LFO2" />
-      <Knob id="lfo2.wav" x={330} y={110} r={20} label="WAV" />
-      <Jack x={198} y={200} label="LFO1" />
-      <Jack x={264} y={200} label="LFO2" />
-
-      {/* Filter */}
-      <Section x={390} y={34} w={156} h={226} title="FILTER" />
-      <Knob id="filter.cutoff" x={432} y={120} label="CUTOFF" />
-      <Knob id="filter.reso" x={506} y={120} label="RESO" />
-      <Jack x={432} y={210} label="CUT" />
-      <Jack x={506} y={210} label="RES" />
-
-      {/* Delay */}
-      <Section x={558} y={34} w={228} h={226} title="DELAY" />
-      <Knob id="delay.time" x={604} y={120} label="TIME" />
-      <Knob id="delay.fdbk" x={672} y={120} label="FDBK" />
-      <Knob id="delay.mix" x={740} y={120} label="MIX" />
-      <Jack x={604} y={210} label="TIME" />
-      <Jack x={672} y={210} label="FDBK" />
-      <TapPoint id="T4" x={772} y={52} />
-
-      {/* OUCH */}
-      <Section x={798} y={34} w={176} h={226} title="OUCH" />
-      <Knob id="ouch.bite" x={846} y={110} label="BITE" />
-      <Knob id="ouch.choke" x={926} y={110} label="CHOKE" />
-      {['P', 'S', 'G', 'S', 'P'].map((l, i) => (
-        <g key={i} className="inactive" pointerEvents="none">
-          <rect x={820 + i * 28} y={190} width={10} height={10} fill="#0b0b0b" stroke="#777" />
-          <rect x={820 + i * 28} y={214} width={10} height={10} fill="#0b0b0b" stroke="#777" />
-          <text x={825 + i * 28} y={244} textAnchor="middle" className="lbl small">
-            {l}
-          </text>
+        <g key={`${x}-${y}`} pointerEvents="none">
+          <circle cx={x} cy={y} r={11} fill="#050505" />
+          <circle cx={x} cy={y} r={6} fill="#1c1c1c" />
         </g>
       ))}
 
-      {/* Utilities */}
-      <Section x={986} y={34} w={188} h={226} title="ATT · ADD" />
-      <Knob id="att.out1" x={1030} y={104} r={16} label="OUT1" />
-      <Knob id="att.out2" x={1092} y={104} r={16} label="OUT2" />
-      <Knob id="add.in1" x={1030} y={186} r={16} label="IN1" />
-      <Knob id="add.in2" x={1092} y={186} r={16} label="IN2" />
-      <Jack x={1146} y={104} label="ATT" />
-      <Jack x={1146} y={186} label="ADD" />
+      {/* ---- Audio, master ---- */}
+      <Title x={188} y={360} text="AUDIO" size={44} rotate={-90} />
+      <Jack x={215} y={195} />
+      <path d="M245 165V128M233 140L245 126L257 140" stroke={WHITE} strokeWidth={5} fill="none" pointerEvents="none" />
+      <path d="M243 195H262" stroke={TRACE} strokeWidth={3} pointerEvents="none" />
+      <Knob id="master" x={295} y={195} />
+      <Jack x={215} y={295} />
+      <path d="M290 322H252M264 310L250 322L264 334" stroke={WHITE} strokeWidth={5} fill="none" pointerEvents="none" />
+      <TapPoint id="T6" x={215} y={150} />
 
-      {/* Left buttons */}
-      <Jack x={112} y={318} label="CLK" />
-      <PanelButton x={60} y={318} label="SYNC" onPress={A.notYet('SYNC', 3)} active={false} milestone={3} />
-      <PanelButton x={60} y={404} label="MODP" led={allSame ? MODP_PROGRAMS[modp1]?.color : '#ffffff'} onPress={() => A.cycleModp()} />
-      <PanelButton x={60} y={490} label="CHRM" onPress={A.notYet('CHRM', 2)} active={false} milestone={2} />
-      <PanelButton x={60} y={576} label="REC" onPress={A.notYet('Sequencer REC', 3)} active={false} milestone={3} />
-      <PanelButton x={60} y={662} label="PLAY" onPress={A.notYet('PLAY', 3)} active={false} milestone={3} />
+      {/* ---- Clock + SEQ buttons ---- */}
+      <Jack x={215} y={400} />
+      <path d="M215 428V455" stroke={TRACE} strokeWidth={3} pointerEvents="none" />
+      <PanelButton x={215} y={500} label="SYNC" ledAt={[243, 462]} onPress={A.notYet('SYNC', 3)} active={false} milestone={3} />
+      <PanelButton x={215} y={605} label="MODP" ledAt={[243, 568]} led={allSame ? MODP_PROGRAMS[modp1]?.color : '#ffffff'} onPress={() => A.cycleModp()} />
+      <PanelButton x={215} y={708} label="CHRM" ledAt={[243, 672]} onPress={A.notYet('CHRM', 2)} active={false} milestone={2} />
+      <PanelButton x={215} y={812} label="REC" ledAt={[243, 852]} red onPress={A.notYet('Sequencer REC', 3)} active={false} milestone={3} />
+      <PanelButton x={215} y={912} label="PLAY" ledAt={[243, 955]} onPress={A.notYet('PLAY', 3)} active={false} milestone={3} />
+      <Title x={312} y={945} text="SEQ" size={44} rotate={-90} />
 
-      {/* Voices */}
+      {/* ---- Delay ---- */}
+      {[
+        ['TIME', 390, 'delay.time'],
+        ['FDBK', 490, 'delay.fdbk'],
+        ['MIX', 590, 'delay.mix'],
+      ].map(([l, x, id]) => (
+        <g key={l as string}>
+          <Label x={x as number} y={133} text={l as string} />
+          <Jack x={x as number} y={195} />
+          <Knob id={id as string} x={(x as number) - 3} y={295} />
+        </g>
+      ))}
+      <Title x={378} y={270} text="DELAY" size={62} />
+      <TapPoint id="T4" x={660} y={300} />
+
+      {/* ---- LPF ---- */}
+      <Label x={693} y={135} text="RESO" />
+      <Jack x={693} y={197} />
+      <Knob id="filter.reso" x={782} y={278} size="big" />
+      <Label x={912} y={135} text="CUTOFF" />
+      <Jack x={910} y={197} />
+      <Knob id="filter.cutoff" x={995} y={272} size="big" />
+      <Title x={738} y={150} text="LPF" size={78} rotate={52} />
+
+      {/* ---- OUCH ---- */}
+      <Label x={1125} y={137} text="CHOKE" />
+      <Jack x={1125} y={200} />
+      <Knob id="ouch.choke" x={1128} y={300} />
+      <Label x={1227} y={137} text="BITE" />
+      <Jack x={1227} y={200} />
+      <Knob id="ouch.bite" x={1222} y={300} />
+      <Title x={1085} y={270} text="OUCH" size={62} />
+      <g pointerEvents="none" className="inactive">
+        {[168, 212].map((y) => (
+          <rect key={y} x={1290} y={y - 9} width={118} height={18} rx={9} fill="#050505" stroke={GOLD} strokeWidth={2} />
+        ))}
+        <text x={1349} y={196} textAnchor="middle" className="plbl" fontSize={13} letterSpacing={6}>
+          PSGSP
+        </text>
+      </g>
+
+      {/* ---- Brand (replaces the maker's logo) ---- */}
+      <text x={1478} y={248} textAnchor="middle" className="brand">
+        ELMYRA 2
+      </text>
+      <text x={1478} y={278} textAnchor="middle" className="brand2">
+        RECREATION
+      </text>
+
+      {/* ---- LFO 1 ---- */}
+      <Label x={1600} y={148} text="FREQ" />
+      <Jack x={1600} y={200} />
+      <Label x={1700} y={148} text="OUT" />
+      <Jack x={1700} y={200} />
+      <Knob id="lfo1.freq" x={1615} y={285} />
+      <Title x={1650} y={350} text="LFO" size={58} rotate={-45} />
+
+      {/* ---- LFO 2 ---- */}
+      <Label x={1505} y={353} text="WAV" />
+      <Jack x={1505} y={410} />
+      <Label x={1600} y={353} text="FREQ" />
+      <Jack x={1600} y={410} />
+      <Label x={1700} y={353} text="OUT" />
+      <Jack x={1700} y={410} />
+      <Knob id="lfo2.wav" x={1512} y={495} />
+      <Knob id="lfo2.freq" x={1615} y={495} />
+      <Title x={1650} y={565} text="LFO" size={58} rotate={-45} />
+
+      {/* ---- ADD ---- */}
+      <Label x={1505} y={565} text="IN" />
+      <Jack x={1505} y={620} />
+      <Label x={1600} y={565} text="IN" />
+      <Jack x={1600} y={620} />
+      <Label x={1700} y={565} text="OUT" />
+      <Jack x={1700} y={620} />
+      <Knob id="add.in1" x={1512} y={708} />
+      <Knob id="add.in2" x={1612} y={708} />
+      <Title x={1612} y={688} text="ADD" size={50} />
+
+      {/* ---- ATT ---- */}
+      <Label x={1505} y={777} text="IN" />
+      <Jack x={1505} y={830} />
+      <Label x={1600} y={777} text="OUT" />
+      <Jack x={1600} y={828} />
+      <Label x={1700} y={777} text="OUT" />
+      <Jack x={1700} y={828} />
+      <Knob id="att.out1" x={1606} y={922} />
+      <Knob id="att.out2" x={1710} y={922} />
+      <Title x={1452} y={895} text="ATT" size={50} />
+
+      {/* ---- Voices ---- */}
       {[1, 2, 3, 4].map((v) => (
-        <VoiceStrip key={v} v={v} x0={150 + (v - 1) * 255} />
+        <Voice key={v} v={v} />
       ))}
 
-      <text x={1180} y={712} textAnchor="end" className="lbl small" fill={QUIET}>
+      <text x={1770} y={1054} textAnchor="end" className="disclaimer">
         unofficial recreation · not affiliated with Neutral Labs
       </text>
     </svg>

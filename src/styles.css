@@ -54,7 +54,42 @@ body,
   filter: drop-shadow(0 10px 30px #000a);
 }
 
-/* SVG text */
+/* SVG text: panel typography */
+.panel .plbl {
+  font-family: 'Orbitron', 'Eurostile', sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  fill: #f2f0ea;
+  letter-spacing: 0.5px;
+}
+.panel .ptitle {
+  font-family: 'Orbitron', 'Eurostile', sans-serif;
+  font-weight: 900;
+  fill: #d9bf86;
+  letter-spacing: 2px;
+}
+.panel .brand {
+  font-family: 'Orbitron', 'Eurostile', sans-serif;
+  font-size: 34px;
+  font-weight: 700;
+  fill: #f2f0ea;
+  letter-spacing: 2px;
+  pointer-events: none;
+}
+.panel .brand2 {
+  font-family: 'Orbitron', 'Eurostile', sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  fill: #ff8a2a;
+  letter-spacing: 8px;
+  pointer-events: none;
+}
+.panel .disclaimer {
+  font-size: 13px;
+  fill: #6f6a60;
+  pointer-events: none;
+}
+/* (older styles below) */
 .panel .logo {
   font-size: 30px;
   font-weight: 700;
@@ -85,13 +120,13 @@ body,
   letter-spacing: 2px;
 }
 .panel .val {
-  font-size: 13px;
+  font-size: 22px;
   font-weight: 700;
   fill: var(--accent);
   pointer-events: none;
 }
 .panel .mtag {
-  font-size: 9px;
+  font-size: 13px;
   font-weight: 700;
   fill: var(--quiet);
   pointer-events: none;
@@ -123,7 +158,7 @@ body,
   animation: glow 1s ease-in-out infinite alternate;
 }
 .panel .taplbl {
-  font-size: 11px;
+  font-size: 18px;
   font-weight: 700;
   fill: var(--green);
   pointer-events: none;
