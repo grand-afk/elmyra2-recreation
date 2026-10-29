@@ -11,6 +11,7 @@ declare class AudioWorkletProcessor {
 
 const SCOPE_EVERY_BLOCKS = 8; // ~21 ms at 48 kHz
 const REC_CHUNK = 16384;
+const ENV_EVERY_BLOCKS = 4; // ~11 ms: smooth LED brightness
 
 const now: () => number =
   typeof performance !== 'undefined' && typeof performance.now === 'function'
@@ -84,6 +85,11 @@ class ElmyraProcessor extends AudioWorkletProcessor {
     }
 
     this.blocks++;
+    if (this.blocks % ENV_EVERY_BLOCKS === 0) {
+      const levels = new Float32Array(4);
+      this.core.envLevels(levels);
+      this.post({ t: 'env', levels }, [levels.buffer]);
+    }
     const tap = this.core.activeTap;
     if (tap && this.blocks % SCOPE_EVERY_BLOCKS === 0) {
       const data = new Float32Array(this.tapLen);

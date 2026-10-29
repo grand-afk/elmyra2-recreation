@@ -93,4 +93,5 @@ export type FromWorklet =
   | { t: 'scope'; id: TapId; data: Float32Array }
   | { t: 'rec'; data: Float32Array }
   | { t: 'recdone' }
+  | { t: 'env'; levels: Float32Array }
   | { t: 'stats'; load: number; memBytes: number; perModule: Record<string, number> };

@@ -72,7 +72,7 @@ export function HelpOverlay() {
               </tbody>
             </table>
             <h3>Touch</h3>
-            <p>Drag a knob up or down; double-tap resets it. Hold a copper pad to play; with Apple Pencil, pressure sets the level. PG: tap for the next wavetable page, hold 1 s for drone mode.</p>
+            <p>Drag a knob up or down; double-tap resets it. Hold a touch plate to play; with Apple Pencil, pressure sets the level. PG: tap for the next wavetable page, hold 1 s for drone mode.</p>
           </section>
         </div>
       </div>

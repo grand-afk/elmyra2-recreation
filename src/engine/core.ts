@@ -315,6 +315,11 @@ export class ElmyraCore {
     this.tapWrite = (this.tapWrite + 1) & (this.tapRing.length - 1);
   }
 
+  /** Current envelope level of each voice (0..1); drives the LEDs between the touch plates. */
+  envLevels(dst: Float32Array) {
+    for (let i = 0; i < NUM_VOICES; i++) dst[i] = this.voices[i].env;
+  }
+
   /** Copy the most recent `dst.length` tap samples into `dst`, oldest first. */
   readTap(dst: Float32Array) {
     const n = this.tapRing.length;

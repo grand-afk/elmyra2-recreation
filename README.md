@@ -22,7 +22,7 @@ Controls for later milestones are drawn on the panel but dimmed, tagged with the
 
 - **iPad / iPhone:** open the GitHub Pages URL in Safari, tap to start audio, and optionally Share → Add to Home Screen.
 - **Keyboard:** press `?` for every shortcut. Plain letters select a control, ←/→ adjust it, digits 1–4 select a voice (press again and hold to play its pad), Shift+letter runs commands.
-- **Touch:** drag knobs vertically (double-tap resets), hold the copper pads to play, tap PG for the next page and hold it 1 s for drone mode.
+- **Touch:** drag knobs vertically (double-tap resets), hold the touch plates to play, tap PG for the next page and hold it 1 s for drone mode.
 
 ## Develop
 

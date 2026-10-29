@@ -1,9 +1,8 @@
 // The instrument panel, drawn as one SVG so it scales cleanly on any screen.
 // Layout follows the hardware's sections; exact positions to be refined against a photo.
-import { useRef, useState, type PointerEvent as RPE } from 'react';
+import { useEffect, useRef, useState, type PointerEvent as RPE } from 'react';
 import { engine } from '../engine/client';
 import { MODP_PROGRAMS, paramDef, type TapId } from '../engine/params';
-import { ElmyraCore } from '../engine/core';
 import * as A from './actions';
 import { useParam } from './hooks';
 import { useUi } from './uiState';
@@ -175,10 +174,21 @@ function PanelButton({ x, y, label, led, onPress, onLong, active = true, milesto
 
 // ---------------------------------------------------------------- Touchpad
 function Pad({ v, x, y, w, h }: { v: number; x: number; y: number; w: number; h: number }) {
-  const gate = useParam(`v${v}.gate`);
   const drone = useParam(`v${v}.drone`) > 0.5;
-  const env = useParam(`v${v}.env`);
   const pointers = useRef(new Set<number>());
+  const glow = useRef<SVGGElement>(null);
+
+  // LED brightness = the voice's real envelope level from the audio thread, as on the hardware.
+  useEffect(() => {
+    let raf = 0;
+    const tick = () => {
+      const lvl = engine.envLevels[v - 1];
+      if (glow.current) glow.current.style.opacity = String(Math.min(1, lvl * 1.15));
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [v]);
   const pressureOf = (e: RPE<SVGRectElement>) => {
     if (e.pointerType === 'pen' && e.pressure > 0) return Math.min(1, 0.15 + e.pressure);
     if (e.pointerType === 'touch' && e.width > 1) return Math.min(1, Math.max(0.45, (e.width - 8) / 40));
@@ -197,20 +207,30 @@ function Pad({ v, x, y, w, h }: { v: number; x: number; y: number; w: number; h:
     pointers.current.delete(e.pointerId);
     if (pointers.current.size === 0) A.gate(v, 0);
   };
-  const lit = drone ? 1 : gate;
-  const fade = ElmyraCore.envSeconds(env);
+  // A pair of conductive plates with a slot between them; the LED behind the PCB shines
+  // through the slot. Touching either plate (or bridging both) plays the voice.
+  const gap = 16;
+  const pw = (w - gap) / 2;
+  const cx = x + w / 2;
+  const handlers = { onPointerDown: down, onPointerMove: move, onPointerUp: up, onPointerCancel: up };
   return (
     <g className="pad">
-      <rect x={x} y={y} width={w} height={h} rx={14} fill="url(#copper)" stroke="#000" strokeWidth={2} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} />
-      {[0.25, 0.5, 0.75].map((f) => (
-        <line key={f} x1={x + 14} x2={x + w - 14} y1={y + h * f} y2={y + h * f} stroke="#5a3417" strokeWidth={1.5} opacity={0.55} pointerEvents="none" />
-      ))}
-      <circle cx={x + w - 18} cy={y + 18} r={6} fill={ACCENT} pointerEvents="none" style={{ opacity: 0.12 + lit * 0.88, transition: `opacity ${fade.toFixed(3)}s linear`, filter: lit > 0.05 ? 'drop-shadow(0 0 6px #ff8a2a)' : 'none' }} />
-      {drone && (
-        <text x={x + 14} y={y + 24} className="lbl small" fill="#2b1608" pointerEvents="none">
-          DRONE
-        </text>
-      )}
+      {/* hit area spans both plates and the slot */}
+      <rect x={x} y={y} width={w} height={h} fill="transparent" {...handlers} />
+      <g pointerEvents="none">
+        <rect x={cx - gap / 2} y={y + 6} width={gap} height={h - 12} rx={3} fill="#0a0908" />
+        <g ref={glow} style={{ opacity: 0 }}>
+          <rect x={cx - gap / 2 + 3} y={y + 10} width={gap - 6} height={h - 20} rx={3} fill={ACCENT} filter="url(#ledBlur)" />
+          <rect x={cx - 2} y={y + 18} width={4} height={h - 36} rx={2} fill="#ffd9b0" />
+        </g>
+        <rect x={x} y={y} width={pw} height={h} rx={10} fill="url(#plate)" stroke="#000" strokeWidth={1.5} />
+        <rect x={cx + gap / 2} y={y} width={pw} height={h} rx={10} fill="url(#plate)" stroke="#000" strokeWidth={1.5} />
+        {drone && (
+          <text x={x + 10} y={y + 20} className="lbl small" fill="#3a2a0c">
+            DRONE
+          </text>
+        )}
+      </g>
     </g>
   );
 }
@@ -270,11 +290,14 @@ export function Panel() {
           <stop offset="0%" stopColor="#d9d3c4" />
           <stop offset="100%" stopColor="#8c8679" />
         </radialGradient>
-        <linearGradient id="copper" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#d08a4e" />
-          <stop offset="55%" stopColor="#a8622e" />
-          <stop offset="100%" stopColor="#7c4520" />
+        <linearGradient id="plate" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#e6c77a" />
+          <stop offset="50%" stopColor="#c19a45" />
+          <stop offset="100%" stopColor="#8f6d28" />
         </linearGradient>
+        <filter id="ledBlur" x="-200%" y="-20%" width="500%" height="140%">
+          <feGaussianBlur stdDeviation="5" />
+        </filter>
       </defs>
       <rect x={0} y={0} width={1200} height={720} rx={18} fill="#171615" />
       {/* screws */}

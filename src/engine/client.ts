@@ -61,6 +61,8 @@ export class EngineClient {
   readonly scope = new Emitter<{ id: TapId; data: Float32Array }>();
   readonly statsEvent = new Emitter<Stats>();
   readonly recEvent = new Emitter<{ recording: boolean; seconds: number }>();
+  /** Latest per-voice envelope levels from the audio thread (read each animation frame). */
+  readonly envLevels = new Float32Array(4);
   ctx: AudioContext | null = null;
   private node: AudioWorkletNode | null = null;
   private recChunks: Float32Array[] = [];
@@ -114,6 +116,9 @@ export class EngineClient {
         this.recChunks.push(m.data);
         this.stats.recBytes += m.data.byteLength;
         this.recEvent.emit({ recording: this.recording, seconds: this.recSeconds() });
+        break;
+      case 'env':
+        this.envLevels.set(m.levels);
         break;
       case 'recdone': {
         const blob = encodeWav(this.recChunks, this.sampleRate);
