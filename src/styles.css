@@ -47,11 +47,26 @@ body,
   gap: 8px;
 }
 
-.panel {
+.panel-wrap {
+  position: relative;
   width: 100%;
-  max-height: calc(100vh - 60px);
+  max-width: calc((100vh - 60px) * 1660 / 1020);
+  aspect-ratio: 1660 / 1020;
+  filter: drop-shadow(0 14px 34px #000c);
+}
+.panel,
+.panel-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.panel {
   touch-action: none;
-  filter: drop-shadow(0 10px 30px #000a);
+}
+.panel-bg {
+  pointer-events: none;
+  transform: translateZ(0);
 }
 
 /* SVG text: panel typography */
@@ -59,13 +74,12 @@ body,
   font-family: 'Orbitron', 'Eurostile', sans-serif;
   font-size: 15px;
   font-weight: 700;
-  fill: #f2f0ea;
+  fill: #111;
   letter-spacing: 0.5px;
 }
 .panel .ptitle {
   font-family: 'Orbitron', 'Eurostile', sans-serif;
   font-weight: 900;
-  fill: #d9bf86;
   letter-spacing: 2px;
 }
 .panel .brand {
@@ -78,9 +92,8 @@ body,
 }
 .panel .brand2 {
   font-family: 'Orbitron', 'Eurostile', sans-serif;
-  font-size: 15px;
-  font-weight: 700;
-  fill: #ff8a2a;
+  font-size: 16px;
+  font-weight: 900;
   letter-spacing: 8px;
   pointer-events: none;
 }

@@ -2,7 +2,7 @@
 // Positions are taken from a front-panel photo of the desktop unit: the viewBox uses the
 // photo's own pixel coordinates (panel area x 140..1780, y 62..1062), so a control can be
 // checked against the photo by its numbers alone.
-import { useEffect, useRef, useState, type PointerEvent as RPE } from 'react';
+import { memo, useEffect, useRef, useState, type PointerEvent as RPE } from 'react';
 import { engine } from '../engine/client';
 import { MODP_PROGRAMS, paramDef, type TapId } from '../engine/params';
 import * as A from './actions';
@@ -14,6 +14,89 @@ const TRACE = '#a88a4f';
 const WHITE = '#f2f0ea';
 const ACCENT = '#ff8a2a';
 const PAGE_COLORS = ['#ff4d4d', '#4dd17a', '#4d8dff', '#ffd84d'];
+
+const VIEWBOX = '130 52 1660 1020';
+
+/**
+ * Static backdrop drawn once in its own layer: glossy black PCB with a faint sheen and
+ * fine texture, and black hex bolts. Kept separate so knob moves never repaint it.
+ */
+const Backdrop = memo(function Backdrop() {
+  const bolts: [number, number][] = [
+    [200, 76],
+    [1716, 76],
+    [200, 1026],
+    [1716, 1026],
+  ];
+  return (
+    <svg className="panel-bg" viewBox={VIEWBOX} aria-hidden>
+      <defs>
+        <linearGradient id="pcb" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#151515" />
+          <stop offset="50%" stopColor="#0c0c0c" />
+          <stop offset="100%" stopColor="#090909" />
+        </linearGradient>
+        <linearGradient id="sheen" x1="0" y1="0" x2="1" y2="0.6">
+          <stop offset="0%" stopColor="#fff" stopOpacity={0} />
+          <stop offset="38%" stopColor="#fff" stopOpacity={0} />
+          <stop offset="50%" stopColor="#fff" stopOpacity={0.045} />
+          <stop offset="62%" stopColor="#fff" stopOpacity={0} />
+          <stop offset="100%" stopColor="#fff" stopOpacity={0} />
+        </linearGradient>
+        <radialGradient id="topLight" cx="35%" cy="10%" r="80%">
+          <stop offset="0%" stopColor="#fff" stopOpacity={0.05} />
+          <stop offset="100%" stopColor="#fff" stopOpacity={0} />
+        </radialGradient>
+        <filter id="grain" x="0" y="0" width="100%" height="100%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves={2} seed={7} />
+          <feColorMatrix type="saturate" values="0" />
+          <feComponentTransfer>
+            <feFuncA type="linear" slope="0.05" />
+          </feComponentTransfer>
+          <feComposite in2="SourceGraphic" operator="in" />
+        </filter>
+        <radialGradient id="boltHead" cx="40%" cy="35%" r="70%">
+          <stop offset="0%" stopColor="#3a3a3a" />
+          <stop offset="100%" stopColor="#0a0a0a" />
+        </radialGradient>
+      </defs>
+      <rect x={136} y={60} width={1648} height={1008} rx={12} fill="#000" opacity={0.6} />
+      <rect x={140} y={62} width={1640} height={1000} rx={10} fill="url(#pcb)" />
+      <rect x={140} y={62} width={1640} height={1000} rx={10} fill="#fff" filter="url(#grain)" />
+      <rect x={140} y={62} width={1640} height={1000} rx={10} fill="url(#topLight)" />
+      <rect x={140} y={62} width={1640} height={1000} rx={10} fill="url(#sheen)" />
+      <rect x={141} y={63} width={1638} height={998} rx={10} fill="none" stroke="#2a2a2a" strokeWidth={2} />
+      {bolts.map(([x, y]) => {
+        const hex = Array.from({ length: 6 }, (_, i) => {
+          const a = (Math.PI / 3) * i + Math.PI / 6;
+          return `${x + Math.cos(a) * 16},${y + Math.sin(a) * 16}`;
+        }).join(' ');
+        return (
+          <g key={`${x}-${y}`}>
+            <circle cx={x + 2} cy={y + 3} r={18} fill="#000" opacity={0.7} />
+            <circle cx={x} cy={y} r={18} fill="#050505" stroke="#1d1d1d" strokeWidth={1.5} />
+            <polygon points={hex} fill="url(#boltHead)" stroke="#000" strokeWidth={1.5} />
+            <path d={`M${x - 12} ${y - 9}L${x + 4} ${y - 15}`} stroke="#fff" strokeOpacity={0.18} strokeWidth={2} strokeLinecap="round" />
+            <circle cx={x} cy={y} r={6} fill="#020202" />
+          </g>
+        );
+      })}
+    </svg>
+  );
+});
+
+/** Original acid-house smiley, drawn in the panel's gold. */
+function AcidFace({ cx, cy, r }: { cx: number; cy: number; r: number }) {
+  return (
+    <g pointerEvents="none" filter="url(#print)" stroke="url(#goldTitle)" fill="none" strokeLinecap="round">
+      <circle cx={cx} cy={cy} r={r} strokeWidth={6} />
+      <ellipse cx={cx - r * 0.33} cy={cy - r * 0.22} rx={r * 0.1} ry={r * 0.2} fill="url(#goldTitle)" stroke="none" />
+      <ellipse cx={cx + r * 0.33} cy={cy - r * 0.22} rx={r * 0.1} ry={r * 0.2} fill="url(#goldTitle)" stroke="none" />
+      <path d={`M${cx - r * 0.58} ${cy + r * 0.12}Q${cx} ${cy + r * 0.85} ${cx + r * 0.58} ${cy + r * 0.12}`} strokeWidth={6} />
+      <path d={`M${cx - r * 0.66} ${cy + r * 0.02}L${cx - r * 0.5} ${cy + r * 0.24}M${cx + r * 0.66} ${cy + r * 0.02}L${cx + r * 0.5} ${cy + r * 0.24}`} strokeWidth={5} />
+    </g>
+  );
+}
 
 /** Horizontal offset of each voice from voice 1 (from the jack row in the photo). */
 const VOICE_DX = [0, 283, 563, 846];
@@ -74,7 +157,9 @@ function Knob({ id, x, y, size = 'small' }: { id: string; x: number; y: number; 
       <circle cx={x} cy={y} r={r + 16} fill="transparent" />
       {size === 'small' && <circle cx={x} cy={y} r={r + 7} fill="none" stroke={TRACE} strokeWidth={3} />}
       {size === 'big' && <circle cx={x + 4} cy={y + 6} r={r + 2} fill="#000" opacity={0.6} />}
-      <circle cx={x} cy={y} r={r} fill={size === 'big' ? 'url(#bigKnob)' : '#0b0b0b'} stroke={selected ? ACCENT : '#2a2a2a'} strokeWidth={selected ? 4 : 1.5} />
+      {size === 'big' && <circle cx={x} cy={y} r={r + 4} fill="#0a0a0a" stroke="#262626" strokeWidth={5} strokeDasharray="3 4" />}
+      <circle cx={x} cy={y} r={r} fill={size === 'big' ? 'url(#bigKnob)' : 'url(#smallKnob)'} stroke={selected ? ACCENT : '#2a2a2a'} strokeWidth={selected ? 4 : 1.5} />
+      <ellipse cx={x - r * 0.25} cy={y - r * 0.35} rx={r * 0.55} ry={r * 0.3} fill="url(#knobSheen)" pointerEvents="none" />
       <line x1={x0} y1={y0} x2={x1} y2={y1} stroke={WHITE} strokeWidth={size === 'big' ? 9 : 4.5} strokeLinecap="round" />
       {!active && (
         <text x={x + r + 4} y={y - r + 4} className="mtag">
@@ -94,7 +179,8 @@ function Knob({ id, x, y, size = 'small' }: { id: string; x: number; y: number; 
 function Jack({ x, y }: { x: number; y: number }) {
   return (
     <g pointerEvents="none">
-      <circle cx={x} cy={y} r={25} fill="url(#jackNut)" stroke="#555" strokeWidth={1} />
+      <circle cx={x + 2} cy={y + 3} r={26} fill="#000" opacity={0.5} />
+      <circle cx={x} cy={y} r={25} fill="url(#jackNut)" stroke="#6d6d69" strokeWidth={2.5} strokeDasharray="1.6 2.2" />
       <circle cx={x} cy={y} r={15} fill="#9a9a96" />
       <circle cx={x} cy={y} r={11} fill="#050505" />
     </g>
@@ -106,8 +192,8 @@ function Label({ x, y, text }: { x: number; y: number; text: string }) {
   const w = text.length * 12 + 12;
   return (
     <g pointerEvents="none">
-      <rect x={x - w / 2} y={y - 12} width={w} height={22} rx={2} fill="#0d0d0d" stroke={WHITE} strokeWidth={1.4} />
-      <text x={x} y={y + 5} textAnchor="middle" className="plbl">
+      <rect x={x - w / 2} y={y - 12} width={w} height={22} rx={4} fill="#ecebe5" filter="url(#print)" />
+      <text x={x} y={y + 5} textAnchor="middle" className="plbl" filter="url(#print)">
         {text}
       </text>
     </g>
@@ -117,7 +203,7 @@ function Label({ x, y, text }: { x: number; y: number; text: string }) {
 /** Big gold section word. */
 function Title({ x, y, text, size = 56, rotate = 0 }: { x: number; y: number; text: string; size?: number; rotate?: number }) {
   return (
-    <text x={x} y={y} className="ptitle" fontSize={size} transform={rotate ? `rotate(${rotate} ${x} ${y})` : undefined} pointerEvents="none">
+    <text x={x} y={y} className="ptitle" fill="url(#goldTitle)" filter="url(#print)" fontSize={size} transform={rotate ? `rotate(${rotate} ${x} ${y})` : undefined} pointerEvents="none">
       {text}
     </text>
   );
@@ -247,10 +333,12 @@ function TouchPlates({ v, a, b }: { v: number; a: [number, number]; b: [number, 
           <g key={i}>
             <circle cx={x + 3} cy={y + 5} r={R + 1} fill="#000" opacity={0.55} />
             <circle cx={x} cy={y} r={R} fill="url(#disc)" stroke="#8d8d88" strokeWidth={1.5} />
+            <circle cx={x} cy={y} r={R - 1} fill="#fff" filter="url(#brushed)" opacity={0.35} />
+            <ellipse cx={x - 12} cy={y - 16} rx={24} ry={12} fill="#fff" opacity={0.22} />
           </g>
         ))}
         {drone && (
-          <text x={(a[0] + b[0]) / 2} y={Math.min(a[1], b[1]) - 56} textAnchor="middle" className="plbl" fill={GOLD}>
+          <text x={(a[0] + b[0]) / 2} y={Math.min(a[1], b[1]) - 56} textAnchor="middle" className="ptitle" fontSize={18} fill="url(#goldTitle)">
             DRONE
           </text>
         )}
@@ -343,7 +431,9 @@ export function Panel() {
   const m4 = useParam('v4.modp');
   const allSame = m2 === modp1 && m3 === modp1 && m4 === modp1;
   return (
-    <svg className="panel" viewBox="130 52 1660 1020" role="application" aria-label="Elmyra 2 Recreation panel">
+    <div className="panel-wrap">
+    <Backdrop />
+    <svg className="panel" viewBox={VIEWBOX} role="application" aria-label="Elmyra 2 Recreation panel">
       <defs>
         <radialGradient id="bigKnob" cx="45%" cy="40%" r="65%">
           <stop offset="0%" stopColor="#2a2a2a" />
@@ -364,23 +454,31 @@ export function Panel() {
           <stop offset="0%" stopColor="#ff5a4a" />
           <stop offset="100%" stopColor="#a3140f" />
         </radialGradient>
+        <radialGradient id="smallKnob" cx="40%" cy="35%" r="70%">
+          <stop offset="0%" stopColor="#262626" />
+          <stop offset="100%" stopColor="#070707" />
+        </radialGradient>
+        <radialGradient id="knobSheen" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor="#fff" stopOpacity={0.16} />
+          <stop offset="100%" stopColor="#fff" stopOpacity={0} />
+        </radialGradient>
+        <linearGradient id="goldTitle" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#ecd6a0" />
+          <stop offset="55%" stopColor="#d4b679" />
+          <stop offset="100%" stopColor="#b8965a" />
+        </linearGradient>
+        <filter id="print" x="-5%" y="-20%" width="110%" height="140%">
+          <feGaussianBlur stdDeviation="0.45" />
+        </filter>
+        <filter id="brushed" x="0" y="0" width="100%" height="100%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.004 0.6" numOctaves={2} seed={4} />
+          <feColorMatrix type="saturate" values="0" />
+          <feComposite in2="SourceGraphic" operator="in" />
+        </filter>
         <filter id="ledBlur" x="-50%" y="-50%" width="200%" height="200%">
           <feGaussianBlur stdDeviation="9" />
         </filter>
       </defs>
-      <rect x={140} y={62} width={1640} height={1000} rx={10} fill="#0e0e0e" />
-      {[
-        [200, 76],
-        [1716, 76],
-        [200, 1026],
-        [1716, 1026],
-      ].map(([x, y]) => (
-        <g key={`${x}-${y}`} pointerEvents="none">
-          <circle cx={x} cy={y} r={11} fill="#050505" />
-          <circle cx={x} cy={y} r={6} fill="#1c1c1c" />
-        </g>
-      ))}
-
       {/* ---- Audio, master ---- */}
       <Title x={188} y={360} text="AUDIO" size={44} rotate={-90} />
       <Jack x={215} y={195} />
@@ -437,16 +535,17 @@ export function Panel() {
         {[168, 212].map((y) => (
           <rect key={y} x={1290} y={y - 9} width={118} height={18} rx={9} fill="#050505" stroke={GOLD} strokeWidth={2} />
         ))}
-        <text x={1349} y={196} textAnchor="middle" className="plbl" fontSize={13} letterSpacing={6}>
+        <text x={1349} y={196} textAnchor="middle" className="ptitle" fill="url(#goldTitle)" fontSize={13} letterSpacing={6}>
           PSGSP
         </text>
       </g>
 
       {/* ---- Brand (replaces the maker's logo) ---- */}
-      <text x={1478} y={248} textAnchor="middle" className="brand">
+      <AcidFace cx={1478} cy={190} r={44} />
+      <text x={1478} y={296} textAnchor="middle" className="brand" filter="url(#print)">
         ELMYRA 2
       </text>
-      <text x={1478} y={278} textAnchor="middle" className="brand2">
+      <text x={1478} y={326} textAnchor="middle" className="brand2" fill="url(#goldTitle)" filter="url(#print)">
         RECREATION
       </text>
 
@@ -500,5 +599,6 @@ export function Panel() {
         unofficial recreation · not affiliated with Neutral Labs
       </text>
     </svg>
+    </div>
   );
 }
