@@ -1,3 +1,4 @@
+import { BUILD_MILESTONE } from '../engine/params';
 // The instrument panel, drawn as one SVG so it scales cleanly on any screen.
 // Positions are taken from a front-panel photo of the desktop unit: the viewBox uses the
 // photo's own pixel coordinates (panel area x 140..1780, y 62..1062), so a control can be
@@ -105,7 +106,7 @@ const VOICE_DX = [0, 283, 563, 846];
 function Knob({ id, x, y, size = 'small' }: { id: string; x: number; y: number; size?: 'small' | 'big' }) {
   const value = useParam(id);
   const def = paramDef(id);
-  const active = def.milestone <= 1;
+  const active = def.milestone <= BUILD_MILESTONE;
   const selected = useUi((s) => s.control === id);
   const drag = useRef<{ y: number; v: number; pid: number } | null>(null);
   const lastTap = useRef(0);
@@ -235,7 +236,7 @@ function TapPoint({ id, x, y, voice }: { id: TapId; x: number; y: number; voice?
 }
 
 // ---------------------------------------------------------------- Panel button with LED window
-function PanelButton({ x, y, label, led, ledAt, red, onPress, onLong, active = true, milestone }: {
+function PanelButton({ x, y, label, led, ledAt, red, onPress, onLong, onDown, onUp, active = true, milestone }: {
   x: number;
   y: number;
   label: string;
@@ -244,12 +245,17 @@ function PanelButton({ x, y, label, led, ledAt, red, onPress, onLong, active = t
   red?: boolean;
   onPress: () => void;
   onLong?: () => void;
+  /** Raw press/release (for buttons that are held, like MODP and CHRM during code entry). */
+  onDown?: () => void;
+  onUp?: () => void;
   active?: boolean;
   milestone?: number;
 }) {
   const timer = useRef<number | null>(null);
   const longFired = useRef(false);
-  const down = () => {
+  const down = (e: RPE<SVGGElement>) => {
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    if (onDown) return onDown();
     longFired.current = false;
     if (onLong)
       timer.current = window.setTimeout(() => {
@@ -258,6 +264,7 @@ function PanelButton({ x, y, label, led, ledAt, red, onPress, onLong, active = t
       }, 1000);
   };
   const up = () => {
+    if (onUp) return onUp();
     if (timer.current) window.clearTimeout(timer.current);
     timer.current = null;
     if (!longFired.current) onPress();
@@ -265,7 +272,15 @@ function PanelButton({ x, y, label, led, ledAt, red, onPress, onLong, active = t
   return (
     <g>
       <rect x={ledAt[0] - 10} y={ledAt[1] - 10} width={20} height={20} fill={led ?? '#2b2a22'} className={led ? 'led on' : 'led'} style={led ? { color: led } : undefined} pointerEvents="none" />
-      <g className={`btn${active ? '' : ' inactive'}`} onPointerDown={down} onPointerUp={up} onPointerCancel={() => timer.current && clearTimeout(timer.current)}>
+      <g
+        className={`btn${active ? '' : ' inactive'}`}
+        onPointerDown={down}
+        onPointerUp={up}
+        onPointerCancel={() => {
+          if (onUp) onUp();
+          else if (timer.current) clearTimeout(timer.current);
+        }}
+      >
         <circle cx={x} cy={y} r={30} fill="transparent" />
         <circle cx={x} cy={y} r={22} fill={red ? 'url(#redBtn)' : '#0b0b0b'} stroke={red ? '#7a1010' : '#3a3a3a'} strokeWidth={2} />
         {!active && milestone && (
@@ -355,6 +370,9 @@ function Voice({ v }: { v: number }) {
   const page = useParam(`v${v}.page`);
   const modp = useParam(`v${v}.modp`);
   const selected = useUi((s) => s.voice === v);
+  const chrm = useParam(`v${v}.chrm`) > 0.5;
+  const oct = useParam(`v${v}.oct`) > 0.5;
+  const mute = useParam(`v${v}.mute`) > 0.5;
   const b = `v${v}.`;
   const X = (x: number) => x + dx;
   // Voices 1-2 have the lower disc on the left; voices 3-4 are mirrored, as on the panel.
@@ -393,6 +411,17 @@ function Voice({ v }: { v: number }) {
       <Label x={X(556)} y={842} text="PG" />
       <circle cx={X(560)} cy={493} r={5} fill={MODP_PROGRAMS[modp]?.color ?? '#333'} className="led on" style={{ color: MODP_PROGRAMS[modp]?.color }} pointerEvents="none" />
       <TouchPlates v={v} a={plates[0]} b={plates[1]} />
+      {chrm && <circle cx={X(418)} cy={493} r={5} fill="#ffd84d" className="led on" style={{ color: '#ffd84d' }} pointerEvents="none" />}
+      {oct && (
+        <text x={X(560)} y={478} textAnchor="middle" className="ptitle" fontSize={13} fill="url(#goldTitle)" pointerEvents="none">
+          +8va
+        </text>
+      )}
+      {mute && (
+        <text x={X(445)} y={872} textAnchor="middle" className="ptitle" fontSize={20} fill="#ff5a4a" pointerEvents="none">
+          MUTED
+        </text>
+      )}
       <TapPoint id="T1" x={X(440)} y={493} voice={v} />
     </g>
   );
@@ -400,22 +429,16 @@ function Voice({ v }: { v: number }) {
 
 /** PG: tap = next wavetable page, hold 1 s = drone. Ring colour shows the page. */
 function PgButton({ v, x, y, color }: { v: number; x: number; y: number; color: string }) {
-  const timer = useRef<number | null>(null);
-  const longFired = useRef(false);
+  // Tap: next page · hold 1 s: drone · while MODP/CHRM held: code digit (hold = mute) ·
+  // held while MODP/CHRM is pressed: per-voice program / chromatic.
   return (
     <g
-      onPointerDown={() => {
-        longFired.current = false;
-        timer.current = window.setTimeout(() => {
-          longFired.current = true;
-          A.toggleDrone(v);
-        }, 1000);
+      onPointerDown={(e) => {
+        (e.currentTarget as Element).setPointerCapture(e.pointerId);
+        A.pgDown(v);
       }}
-      onPointerUp={() => {
-        if (timer.current) clearTimeout(timer.current);
-        if (!longFired.current) A.cyclePage(v);
-      }}
-      onPointerCancel={() => timer.current && clearTimeout(timer.current)}
+      onPointerUp={() => A.pgUp(v)}
+      onPointerCancel={() => A.pgUp(v)}
     >
       <circle cx={x} cy={y} r={28} fill="transparent" />
       <circle cx={x} cy={y} r={22} fill="none" stroke={color} strokeWidth={3} className="led on" style={{ color }} />
@@ -424,12 +447,35 @@ function PgButton({ v, x, y, color }: { v: number; x: number; y: number; color: 
   );
 }
 
-export function Panel() {
+/** The left-hand button column. Owns the blink clock so only these LEDs re-render. */
+function SeqButtons() {
   const modp1 = useParam('v1.modp');
   const m2 = useParam('v2.modp');
   const m3 = useParam('v3.modp');
   const m4 = useParam('v4.modp');
   const allSame = m2 === modp1 && m3 === modp1 && m4 === modp1;
+  const chrmCount = [useParam('v1.chrm'), useParam('v2.chrm'), useParam('v3.chrm'), useParam('v4.chrm')].filter((c) => c > 0.5).length;
+  const flashUntil = useUi((s) => s.codeFlashUntil);
+  const [now, setNow] = useState(() => performance.now());
+  const flash = now < flashUntil;
+  // shared blink clock for the button LEDs (code confirm, mixed MODP/CHRM states)
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(performance.now()), 120);
+    return () => window.clearInterval(id);
+  }, []);
+  const blink = Math.floor(now / 120) % 2 === 0;
+  return (
+    <g>
+      <PanelButton x={215} y={500} label="SYNC" ledAt={[243, 462]} onPress={A.notYet('SYNC', 3)} active={false} milestone={3} />
+      <PanelButton x={215} y={605} label="MODP" ledAt={[243, 568]} led={allSame ? MODP_PROGRAMS[modp1]?.color : blink ? '#ffffff' : '#555'} onPress={() => undefined} onDown={() => A.bankDown('MODP')} onUp={() => A.bankUp('MODP')} />
+      <PanelButton x={215} y={708} label="CHRM" ledAt={[243, 672]} led={chrmCount === 4 ? '#ffd84d' : chrmCount ? (blink ? '#ffd84d' : '#5a4a10') : null} onPress={() => undefined} onDown={() => A.bankDown('CHRM')} onUp={() => A.bankUp('CHRM')} />
+      <PanelButton x={215} y={812} label="REC" ledAt={[243, 852]} led={flash && blink ? '#ff3b3b' : null} red onPress={A.notYet('Sequencer REC', 3)} active={false} milestone={3} />
+      <PanelButton x={215} y={912} label="PLAY" ledAt={[243, 955]} led={flash && blink ? '#3bd16f' : null} onPress={A.notYet('PLAY', 3)} active={false} milestone={3} />
+    </g>
+  );
+}
+
+export function Panel() {
   return (
     <div className="panel-wrap">
     <Backdrop />
@@ -492,11 +538,7 @@ export function Panel() {
       {/* ---- Clock + SEQ buttons ---- */}
       <Jack x={215} y={400} />
       <path d="M215 428V455" stroke={TRACE} strokeWidth={3} pointerEvents="none" />
-      <PanelButton x={215} y={500} label="SYNC" ledAt={[243, 462]} onPress={A.notYet('SYNC', 3)} active={false} milestone={3} />
-      <PanelButton x={215} y={605} label="MODP" ledAt={[243, 568]} led={allSame ? MODP_PROGRAMS[modp1]?.color : '#ffffff'} onPress={() => A.cycleModp()} />
-      <PanelButton x={215} y={708} label="CHRM" ledAt={[243, 672]} onPress={A.notYet('CHRM', 2)} active={false} milestone={2} />
-      <PanelButton x={215} y={812} label="REC" ledAt={[243, 852]} red onPress={A.notYet('Sequencer REC', 3)} active={false} milestone={3} />
-      <PanelButton x={215} y={912} label="PLAY" ledAt={[243, 955]} onPress={A.notYet('PLAY', 3)} active={false} milestone={3} />
+      <SeqButtons />
       <Title x={312} y={945} text="SEQ" size={44} rotate={-90} />
 
       {/* ---- Delay ---- */}

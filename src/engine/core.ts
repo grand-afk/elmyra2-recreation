@@ -3,7 +3,7 @@
 //
 // Signal order follows the manual v2.4:
 //   voices -> mix saturation -> main filter -> delay -> (+ ext in) -> OUCH -> master
-// Milestone 1: filter is bypassed, no external input.
+// Filter arrives in milestone 4; no external input yet.
 
 import { NUM_VOICES, PARAM_INDEX, PARAMS, defaultValues, type TapId } from './params';
 import {
@@ -14,6 +14,7 @@ import {
   tableOffset,
   type WavetableBank,
 } from './wavetables';
+import { EDOS, TUNE_OCTAVES, quantiseTune, type Tuning } from './tuning';
 
 const TWO_PI = Math.PI * 2;
 const A0 = 27.5;
@@ -41,7 +42,9 @@ class Voice {
   phaseB = 0;
   subPhase = 0; // runs at f/4; saw sub uses 2x of it
   env = 0;
-  tune = 0;
+  /** Current pitch in octaves above A0 (smoothed in the log domain). */
+  pitch = 0;
+  hz = 0;
   wave = 0;
   mod = 0;
   out = 0;
@@ -98,7 +101,7 @@ export class ElmyraCore {
     this.master = this.params[P.master];
     for (let i = 0; i < NUM_VOICES; i++) {
       const v = this.voices[i];
-      v.tune = this.params[P[`v${i + 1}.tune`]];
+      v.pitch = this.params[P[`v${i + 1}.tune`]] * TUNE_OCTAVES;
       v.wave = this.params[P[`v${i + 1}.wave`]];
       v.mod = this.params[P[`v${i + 1}.mod`]];
     }
@@ -118,7 +121,7 @@ export class ElmyraCore {
 
   /** TUNE knob → Hz. Seven octaves from A0 (27.5 Hz) to A7 (3520 Hz). */
   static tuneToHz(tune: number) {
-    return A0 * Math.pow(2, tune * 7);
+    return A0 * Math.pow(2, tune * TUNE_OCTAVES);
   }
 
   /** ENV knob → envelope time constant: 3 ms .. ~6 s, exponential. */
@@ -166,7 +169,9 @@ export class ElmyraCore {
     const tapVoice = Math.min(NUM_VOICES - 1, Math.max(0, Math.round(p[P['tap.voice']])));
     const tap = this.activeTap;
     const dLen = this.dBuf.length;
-    const lpC = 1 - Math.exp((-TWO_PI * 5000) / sr); // delay colour 323 (default)
+    // delay feedback colour, codes 321-324 (323 default)
+    const lpHz = [1200, 2600, 5000, 11000][Math.round(p[P['delay.color']])] ?? 5000;
+    const lpC = 1 - Math.exp((-TWO_PI * lpHz) / sr);
     const timeSlew = coef(0.12, sr); // tape-like when TIME moves
 
     const vp = this.voices.map((_, i) => {
@@ -177,11 +182,27 @@ export class ElmyraCore {
         gate: Math.min(1, Math.max(0, p[P[b + 'gate']])),
         modp: Math.round(p[P[b + 'modp']]),
         tune: p[P[b + 'tune']],
+        oct: p[P[b + 'oct']] > 0.5 ? 1 : 0,
+        chrm: p[P[b + 'chrm']] > 0.5,
+        note: p[P[b + 'note']],
+        mute: p[P[b + 'mute']] > 0.5,
         wave: p[P[b + 'wave']],
         mod: p[P[b + 'mod']],
         envCoef: coef(ElmyraCore.envSeconds(p[P[b + 'env']]), sr),
       };
     });
+
+    // Target pitch per voice (octaves above A0), then tune follow (codes 2221-2224).
+    const tuning: Tuning = { edo: EDOS[Math.round(p[P['chrm.edo']])] ?? 12, scale: Math.round(p[P['chrm.scale']]) };
+    const follow = Math.round(p[P['tune.follow']]);
+    const targets = vp.map((c) => {
+      if (c.note >= 0) return { o: c.note, fast: true };
+      if (c.chrm) return { o: quantiseTune(c.tune, tuning) + c.oct, fast: true };
+      return { o: c.tune * TUNE_OCTAVES + c.oct, fast: false };
+    });
+    for (let i = 1; i <= follow && i < NUM_VOICES; i++) targets[i] = targets[0];
+    const fastC = coef(0.004, sr);
+    const sat = Math.round(p[P['mix.sat']]);
 
     for (let n = 0; n < frames; n++) {
       // ---- voices -------------------------------------------------------
@@ -189,16 +210,18 @@ export class ElmyraCore {
       for (let i = 0; i < NUM_VOICES; i++) {
         const v = this.voices[i];
         const c = vp[i];
-        v.tune = c.tune + (v.tune - c.tune) * tc;
+        const tg = targets[i];
+        v.pitch = tg.o + (v.pitch - tg.o) * (tg.fast ? fastC : tc);
         v.wave = c.wave + (v.wave - c.wave) * sc;
         v.mod = c.mod + (v.mod - c.mod) * sc;
         const target = c.drone ? 1 : c.gate;
         v.env = target + (v.env - target) * c.envCoef;
-        if (v.env < 1e-5 && target === 0) {
+        if ((v.env < 1e-5 && target === 0) || c.mute) {
           v.out = 0;
           continue; // silent voice: skip oscillator cost
         }
-        const f = ElmyraCore.tuneToHz(v.tune);
+        const f = A0 * Math.pow(2, v.pitch);
+        v.hz = f;
         let s: number;
         if (c.modp === 1) {
           // SUBOSC: saw one octave down, square two octaves down, faded in by MOD
@@ -234,9 +257,20 @@ export class ElmyraCore {
         mix += v.out;
       }
 
-      // ---- mix saturation (code 122 default) -----------------------------
-      const drive = 2;
-      let x = Math.tanh(mix * drive) / Math.sqrt(drive);
+      // ---- mix saturation (codes 121-124; 122 default) ------------------
+      // Lower settings are quieter overall, as the manual notes.
+      let x: number;
+      if (sat === 0) x = mix * 0.5;
+      else if (sat === 1) x = Math.tanh(mix * 2) / Math.SQRT2;
+      else if (sat === 2) {
+        // hard: cubic soft knee into a flat clip
+        const d = mix * 4;
+        x = (d >= 1 ? 1 : d <= -1 ? -1 : 1.5 * d - 0.5 * d * d * d) * 0.75;
+      } else {
+        // dirty: asymmetric drive with crossover grit
+        const d = mix * 7 + 0.35;
+        x = (Math.tanh(d) - Math.tanh(0.35)) * 0.7 + Math.sign(mix) * Math.min(0.08, Math.abs(mix) * 0.4);
+      }
       if (tap === 'T1') this.pushTap(this.voices[tapVoice].out);
 
       // ---- main filter: bypassed until milestone 4 -----------------------
@@ -308,6 +342,7 @@ export class ElmyraCore {
       if (tap === 'T6') this.pushTap(y);
       out[n] = y;
     }
+    this.framesRendered += frames;
   }
 
   private pushTap(s: number) {
@@ -319,6 +354,14 @@ export class ElmyraCore {
   envLevels(dst: Float32Array) {
     for (let i = 0; i < NUM_VOICES; i++) dst[i] = this.voices[i].env;
   }
+
+  /** Current oscillator frequency of each voice in Hz (exact, for the scope's T1 readout). */
+  voiceHz(dst: Float32Array) {
+    for (let i = 0; i < NUM_VOICES; i++) dst[i] = A0 * Math.pow(2, this.voices[i].pitch);
+  }
+
+  /** Total samples rendered so far (lets the scope lock its display to a pitch). */
+  framesRendered = 0;
 
   /** Copy the most recent `dst.length` tap samples into `dst`, oldest first. */
   readTap(dst: Float32Array) {

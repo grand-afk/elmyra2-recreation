@@ -2,8 +2,14 @@
 import { useSyncExternalStore } from 'react';
 import type { TapId } from '../engine/params';
 
+export type ScopeView = 'wave' | 'spectrum';
+
 export interface ScopeSettings {
   tap: TapId;
+  view: ScopeView;
+  coupling: 'ac' | 'dc';
+  persistence: 0 | 1 | 2;
+  lock: boolean;
   msPerDiv: number;
   trigger: 'auto' | 'normal' | 'single';
   level: number;
@@ -28,6 +34,12 @@ export interface UiState {
   recording: boolean;
   recSeconds: number;
   toast: string | null;
+  /** Code entry in progress (MODP or CHRM held). */
+  codeEntry: { bank: 'MODP' | 'CHRM'; digits: string; consumed: boolean } | null;
+  /** REC and PLAY LEDs flash until this time (code confirmed). */
+  codeFlashUntil: number;
+  drawerOpen: boolean;
+  drawerOctave: number;
 }
 
 const SCOPE_KEY = 'e2r.scope';
@@ -43,6 +55,10 @@ function loadScope(): Partial<ScopeSettings> {
 
 const scopeDefaults: ScopeSettings = {
   tap: 'T6',
+  view: 'wave',
+  coupling: 'dc',
+  persistence: 0,
+  lock: false,
   msPerDiv: 2,
   trigger: 'auto',
   level: 0,
@@ -67,6 +83,10 @@ let state: UiState = {
   recording: false,
   recSeconds: 0,
   toast: null,
+  codeEntry: null,
+  codeFlashUntil: 0,
+  drawerOpen: false,
+  drawerOctave: 2,
 };
 
 const listeners = new Set<() => void>();
@@ -78,8 +98,9 @@ export const ui = {
     state = { ...state, ...p };
     if (p.scope) {
       try {
-        const { x, y, w, h, tap, msPerDiv, trigger, level, slope, gain } = state.scope;
-        localStorage.setItem(SCOPE_KEY, JSON.stringify({ x, y, w, h, tap, msPerDiv, trigger, level, slope, gain }));
+        const { frozen: _f, ...keep } = state.scope;
+        void _f;
+        localStorage.setItem(SCOPE_KEY, JSON.stringify(keep));
       } catch {
         /* storage unavailable: settings just won't persist */
       }

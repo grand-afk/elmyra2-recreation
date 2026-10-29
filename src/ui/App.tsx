@@ -1,3 +1,4 @@
+import { BUILD_MILESTONE } from '../engine/params';
 import { useEffect, useState } from 'react';
 import { engine } from '../engine/client';
 import { MODP_PROGRAMS, paramDef } from '../engine/params';
@@ -5,6 +6,7 @@ import { Panel } from './Panel';
 import { Scope } from './Scope';
 import { HelpOverlay } from './HelpOverlay';
 import { CommandBar } from './CommandBar';
+import { Drawer } from './Drawer';
 import { installKeyboard } from './keymap';
 import { useParam } from './hooks';
 import { ui, useUi } from './uiState';
@@ -52,6 +54,16 @@ function StatusLine() {
   const voice = useUi((s) => s.voice);
   const value = useParam(control ?? 'master');
   const modp = useParam(`v${voice}.modp`);
+  const ce = useUi((s) => s.codeEntry);
+  if (ce && !ce.consumed)
+    return (
+      <div className="status-line">
+        <span className="sel">
+          {ce.bank} code: <b>{ce.digits ? ce.digits.split('').join(' ') : '…'}</b>
+        </span>
+        <span className="quiet">tap PG 1–4 (or keys 1–4), then release {ce.bank}</span>
+      </div>
+    );
   return (
     <div className="status-line">
       <span>Voice {voice}</span>
@@ -59,7 +71,7 @@ function StatusLine() {
       {control ? (
         <span className="sel">
           {paramDef(control).label} <b>{Math.round(value * 100)}</b>
-          {paramDef(control).milestone > 1 && ` · arrives in milestone ${paramDef(control).milestone}`}
+          {paramDef(control).milestone > BUILD_MILESTONE && ` · arrives in milestone ${paramDef(control).milestone}`}
         </span>
       ) : (
         <span className="quiet">No control selected: press a letter or touch a knob</span>
@@ -83,6 +95,7 @@ export function App() {
         <StatusLine />
       </main>
       <CommandBar />
+      <Drawer />
       <Scope />
       <HelpOverlay />
       <Toast />

@@ -87,14 +87,16 @@ class ElmyraProcessor extends AudioWorkletProcessor {
     this.blocks++;
     if (this.blocks % ENV_EVERY_BLOCKS === 0) {
       const levels = new Float32Array(4);
+      const hz = new Float32Array(4);
       this.core.envLevels(levels);
-      this.post({ t: 'env', levels }, [levels.buffer]);
+      this.core.voiceHz(hz);
+      this.post({ t: 'env', levels, hz }, [levels.buffer, hz.buffer]);
     }
     const tap = this.core.activeTap;
     if (tap && this.blocks % SCOPE_EVERY_BLOCKS === 0) {
       const data = new Float32Array(this.tapLen);
       this.core.readTap(data);
-      this.post({ t: 'scope', id: tap, data }, [data.buffer]);
+      this.post({ t: 'scope', id: tap, data, end: this.core.framesRendered }, [data.buffer]);
     }
 
     this.busyMs += now() - t0;

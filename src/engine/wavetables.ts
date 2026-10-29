@@ -4,6 +4,8 @@
 // The spectra are original designs, voiced to cover similar ground to the hardware pages
 // (basic, organ, formant, metallic). They are a starting point for tuning by ear.
 
+import { fft } from '../dsp/fft';
+
 export const TABLE_SIZE = 2048;
 export const WAVES_PER_PAGE = 8;
 export const NUM_PAGES = 4;
@@ -74,40 +76,6 @@ export const PAGES: { name: string; waves: Spectrum[] }[] = [
     ],
   },
 ];
-
-/** In-place iterative radix-2 FFT (complex). Inverse when `inv` is true (unscaled). */
-function fft(re: Float64Array, im: Float64Array, inv: boolean) {
-  const n = re.length;
-  for (let i = 1, j = 0; i < n; i++) {
-    let bit = n >> 1;
-    for (; j & bit; bit >>= 1) j ^= bit;
-    j ^= bit;
-    if (i < j) {
-      [re[i], re[j]] = [re[j], re[i]];
-      [im[i], im[j]] = [im[j], im[i]];
-    }
-  }
-  for (let len = 2; len <= n; len <<= 1) {
-    const ang = ((inv ? 2 : -2) * Math.PI) / len;
-    const wr = Math.cos(ang);
-    const wi = Math.sin(ang);
-    for (let i = 0; i < n; i += len) {
-      let cr = 1;
-      let ci = 0;
-      for (let k = 0; k < len / 2; k++) {
-        const ar = re[i + k + len / 2] * cr - im[i + k + len / 2] * ci;
-        const ai = re[i + k + len / 2] * ci + im[i + k + len / 2] * cr;
-        re[i + k + len / 2] = re[i + k] - ar;
-        im[i + k + len / 2] = im[i + k] - ai;
-        re[i + k] += ar;
-        im[i + k] += ai;
-        const t = cr * wr - ci * wi;
-        ci = cr * wi + ci * wr;
-        cr = t;
-      }
-    }
-  }
-}
 
 /** Build one table holding harmonics 1..maxHarm of a spectrum, normalised to peak 1. */
 function buildTable(spec: Spectrum, maxHarm: number, out: Float32Array, offset: number) {

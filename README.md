@@ -4,7 +4,7 @@ A browser recreation of a 4-voice microtonal drone synthesizer, built for learni
 
 **Unofficial, personal, non-commercial.** Not affiliated with or endorsed by Neutral Labs. No firmware code is used: the DSP is written from the v2.4 user manual's description of behaviour and tuned by ear against real hardware.
 
-## Status: milestone 1
+## Status: milestone 2
 
 | Area | State |
 |---|---|
@@ -15,6 +15,11 @@ A browser recreation of a 4-voice microtonal drone synthesizer, built for learni
 | Recording | 24-bit WAV via the iOS share sheet or a download |
 | Help | `?` overlay generated from the keymap |
 | Meter | Audio-thread load estimate and audio memory |
+| CHRM (M2) | Chromatic mode per voice or all; scales 11–14; 7/9/12/15/17-EDO; tune follow 2221–2224 |
+| Codes (M2) | Hold MODP or CHRM, tap PG 1–4 as digits, release; REC/PLAY flash to confirm. Octave 11/22/33/44, mix saturation 121–124, delay colour 321–324. Later codes are listed with their milestone in the `?` palette |
+| Drawer (M2) | Two octaves of the active tuning; voices rotate, oldest stolen; pressure sets level |
+| Scope (M2) | Frequency / note / cents readout (exact for T1, YIN elsewhere), spectrum view, AC/DC, persistence, lock to pitch |
+| Mute (M2) | MODP + long-press PG, or Shift+N |
 
 Controls for later milestones are drawn on the panel but dimmed, tagged with their milestone (M2–M5).
 

@@ -58,11 +58,13 @@ class Emitter<T> {
 
 export class EngineClient {
   readonly store = new Store();
-  readonly scope = new Emitter<{ id: TapId; data: Float32Array }>();
+  readonly scope = new Emitter<{ id: TapId; data: Float32Array; end: number }>();
   readonly statsEvent = new Emitter<Stats>();
   readonly recEvent = new Emitter<{ recording: boolean; seconds: number }>();
   /** Latest per-voice envelope levels from the audio thread (read each animation frame). */
   readonly envLevels = new Float32Array(4);
+  /** Latest exact oscillator frequency of each voice (Hz). */
+  readonly voiceHz = new Float32Array(4);
   ctx: AudioContext | null = null;
   private node: AudioWorkletNode | null = null;
   private recChunks: Float32Array[] = [];
@@ -72,6 +74,8 @@ export class EngineClient {
 
   constructor() {
     for (const p of PARAMS) this.store.subscribe(p.id, () => this.send({ t: 'param', i: PARAM_INDEX[p.id], v: this.store.get(p.id) }));
+    // Turning a TUNE knob takes the voice back from the keyboard drawer.
+    for (let v = 1; v <= 4; v++) this.store.subscribe(`v${v}.tune`, () => this.store.set(`v${v}.note`, -1));
   }
 
   get started() {
@@ -119,6 +123,7 @@ export class EngineClient {
         break;
       case 'env':
         this.envLevels.set(m.levels);
+        this.voiceHz.set(m.hz);
         break;
       case 'recdone': {
         const blob = encodeWav(this.recChunks, this.sampleRate);

@@ -47,6 +47,7 @@ interface Cmd {
 export function CommandBar() {
   const scopeOpen = useUi((s) => s.scopeOpen);
   const helpOpen = useUi((s) => s.helpOpen);
+  const drawerOpen = useUi((s) => s.drawerOpen);
   const recording = useUi((s) => s.recording);
   const recSeconds = useUi((s) => s.recSeconds);
   const keyboardSeen = useUi((s) => s.keyboardSeen);
@@ -59,7 +60,7 @@ export function CommandBar() {
     { icon: '?', label: 'Help', key: '?', on: helpOpen, run: () => A.toggleHelp() },
     { icon: '⟲', label: 'Mod rec', key: 'Shift+A', milestone: 3, run: A.notYet('Modulation recording', 3) },
     { icon: '∞', label: 'Looper', key: 'Shift+L', milestone: 4, run: A.notYet('Looper', 4) },
-    { icon: '♪', label: 'Keys', key: 'Shift+D', milestone: 2, run: A.notYet('Keyboard drawer', 2) },
+    { icon: '♪', label: 'Keys', key: 'Shift+D', on: drawerOpen, run: () => A.toggleDrawer() },
     { icon: '⇪', label: 'Export', key: 'Shift+E', milestone: 5, run: A.notYet('Patch export', 5) },
     { icon: 'M', label: 'MIDI', key: 'Shift+M', milestone: 3, run: A.notYet('MIDI learn', 3) },
   ];
